@@ -38,7 +38,7 @@ public class HillDecipher {
     public static void main(String[] args) throws IOException {
         try {
             if (args.length != 5) {
-                throw new IllegalArgumentException("Expected: HillCipher <radix> <blocksize> <keyfile> <plainfile> <cipherfile>");
+                throw new IllegalArgumentException("Expected: HillDecipher <radix> <blocksize> <keyfile> <plainfile> <cipherfile>");
             } else {
                 parseArgs(args);
             }
