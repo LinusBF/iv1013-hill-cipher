@@ -3,6 +3,7 @@ import org.jscience.mathematics.vector.*;
 import org.w3c.dom.ranges.RangeException;
 
 import java.io.*;
+import java.util.ArrayList;
 import java.util.Scanner;
 
 public class HillCipher {
@@ -44,32 +45,53 @@ public class HillCipher {
     }
 
     private static void applyKeyToStream(Scanner input, FileWriter output, DenseMatrix<ModuloInteger> key) throws IOException {
+        ArrayList<ModuloInteger> chars = new ArrayList<>();
+        unevenBreak:
         while (input.hasNext()) {
-            ModuloInteger[] chars = new ModuloInteger[blockSize];
             for(int i = 0; i < blockSize; i++){
                 if(input.hasNext()){
-                    chars[i] = stringToModInt(input.next());
+                    chars.add(i, stringToModInt(input.next()));
+                    if(chars.get(i).isGreaterThan(intToModInt(radix - 1))
+                            || chars.get(i).isLessThan(intToModInt(0))
+                    ){
+                        throw new RangeException(RangeException.BAD_BOUNDARYPOINTS_ERR, "Some input values are larger than the radix!");
+                    }
                 } else {
-                    chars[i] = stringToModInt("0");
-                }
-                if(chars[i].isGreaterThan(intToModInt(radix - 1))
-                || chars[i].isLessThan(intToModInt(0))
-                ){
-                    throw new RangeException(RangeException.BAD_BOUNDARYPOINTS_ERR, "Some input values are larger than the radix!");
+                    break unevenBreak;
                 }
             }
 
-            DenseVector<ModuloInteger> valueToEncrypt = DenseVector.valueOf(chars);
-            DenseVector<ModuloInteger> encrypted = key.times(valueToEncrypt);
-            for(int i = 0; i < encrypted.getDimension(); i++) {
-                if(i != 0){
-                    output.write(" ");
-                }
-                output.write(encrypted.get(i).toString());
-            }
-            output.write(" ");
+            writeEncryptedChars(output, key, chars);
+            chars.clear();
         }
+        addPadding(output, key, chars);
         output.close();
+    }
+
+    private static void writeEncryptedChars(FileWriter output, DenseMatrix<ModuloInteger> key, ArrayList<ModuloInteger> chars) throws IOException {
+        DenseVector<ModuloInteger> valueToEncrypt = DenseVector.valueOf(chars);
+        DenseVector<ModuloInteger> encrypted = key.times(valueToEncrypt);
+        for(int i = 0; i < encrypted.getDimension(); i++) {
+            if(i != 0){
+                output.write(" ");
+            }
+            output.write(encrypted.get(i).toString());
+        }
+        output.write(" ");
+    }
+
+    private static void addPadding(FileWriter output, DenseMatrix<ModuloInteger> key, ArrayList<ModuloInteger> chars) throws IOException {
+        int missingChars = blockSize - chars.size();
+        for(int i = 0; i < missingChars; i++){
+            chars.add(stringToModInt("0"));
+        }
+        writeEncryptedChars(output, key, chars);
+        ArrayList<ModuloInteger> padding = new ArrayList<>();
+        for(int i = 0; i < blockSize - 1; i++){
+            padding.add(stringToModInt("0"));
+        }
+        padding.add(stringToModInt(String.valueOf(missingChars)));
+        writeEncryptedChars(output, key, padding);
     }
 
     private static void parseArgs(String[] args) {

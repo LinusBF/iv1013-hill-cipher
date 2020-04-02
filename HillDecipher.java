@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Scanner;
 
 public class HillDecipher {
@@ -46,51 +47,84 @@ public class HillDecipher {
 
             ModuloInteger.setModulus(LargeInteger.valueOf(radix));
             DenseMatrix<ModuloInteger> keyMatrix = getKey().inverse();
+            InputStream sizeInput = HillDecipher.class.getResourceAsStream(encryptedTextPath);
             InputStream input = HillDecipher.class.getResourceAsStream(encryptedTextPath);
             File output = new File(decryptedOutputPath);
+            Scanner encryptedSizeReader = new Scanner(sizeInput);
+            encryptedSizeReader.useDelimiter("\\s+");
+            int fileSize = getFileSize(encryptedSizeReader);
+            encryptedSizeReader.close();
+            FileWriter decryptWriter = new FileWriter(output);
             Scanner encryptedReader = new Scanner(input);
             encryptedReader.useDelimiter("\\s+");
-            FileWriter decryptWriter = new FileWriter(output);
-            applyKeyToStream(encryptedReader, decryptWriter, keyMatrix);
+            applyKeyToStream(encryptedReader, decryptWriter, keyMatrix, fileSize);
         } catch (IllegalArgumentException | RangeException | VerifyError e) {
             System.out.println(e.getMessage());
             System.exit(1);
         }
     }
 
-    private static void applyKeyToStream(Scanner input, FileWriter output, DenseMatrix<ModuloInteger> key) throws IOException, RangeException {
+    private static void applyKeyToStream(Scanner input, FileWriter output, DenseMatrix<ModuloInteger> key, int size) throws IOException, RangeException {
+        int count = 0;
+        ArrayList<DenseVector<ModuloInteger>> lastTwoBlocks = new ArrayList<>();
         while (input.hasNext()) {
-            ModuloInteger[] chars = new ModuloInteger[blockSize];
-            boolean cutoff = false;
+            ArrayList<ModuloInteger> chars = new ArrayList<>();
             for(int i = 0; i < blockSize; i++){
+                count = count + 1;
                 if(input.hasNext()){
-                    chars[i] = stringToModInt(input.next());
-                } else {
-                    cutoff = true;
-                    break;
-                }
-                if(chars[i].isGreaterThan(intToModInt(radix - 1))
-                        || chars[i].isLessThan(intToModInt(0))
-                ){
-                    throw new RangeException(RangeException.BAD_BOUNDARYPOINTS_ERR, "Some input values are larger than the radix!");
-                }
-            }
-            if(cutoff){
-                break;
-            }
-            DenseVector<ModuloInteger> valueToEncrypt = DenseVector.valueOf(chars);
-            DenseVector<ModuloInteger> encrypted = key.times(valueToEncrypt);
-            for(int i = 0; i < encrypted.getDimension(); i++) {
-                if(!encrypted.get(i).equals(ModuloInteger.valueOf(LargeInteger.valueOf(0)))){
-                    if(i != 0){
-                        output.write(" ");
+                    chars.add(i, stringToModInt(input.next()));
+                    if(chars.get(i).isGreaterThan(intToModInt(radix - 1))
+                            || chars.get(i).isLessThan(intToModInt(0))
+                    ){
+                        throw new RangeException(RangeException.BAD_BOUNDARYPOINTS_ERR, "Some input values are larger than the radix!");
                     }
-                    output.write(encrypted.get(i).toString());
                 }
             }
-            output.write(" ");
+            DenseVector<ModuloInteger> decrypted = decryptChars(key, chars);
+            if(count > size - 2*blockSize){
+                lastTwoBlocks.add(decrypted);
+            } else {
+                writeDecryptedChars(output, decrypted);
+            }
         }
+        removePadding(output, lastTwoBlocks);
+        output.write("\n");
+        input.close();
         output.close();
+    }
+
+    private static DenseVector<ModuloInteger> decryptChars(DenseMatrix<ModuloInteger> key, ArrayList<ModuloInteger> chars) {
+        DenseVector<ModuloInteger> valueToDecrypt = DenseVector.valueOf(chars);
+        return key.times(valueToDecrypt);
+    }
+
+    private static void writeDecryptedChars(FileWriter output, DenseVector<ModuloInteger> decrypted) throws IOException {
+        for(int i = 0; i < decrypted.getDimension(); i++) {
+            if(i != 0){
+                output.write(" ");
+            }
+            output.write(decrypted.get(i).toString());
+        }
+        output.write(" ");
+    }
+
+    private static void removePadding(FileWriter output, ArrayList<DenseVector<ModuloInteger>> lastTwoBlocks) throws IOException {
+        int sizeOfPadding = lastTwoBlocks.get(1).get(blockSize - 1).intValue();
+        for(int i = 0; i < blockSize - sizeOfPadding; i++){
+            output.write(lastTwoBlocks.get(0).get(i).toString());
+            if (i != blockSize - sizeOfPadding - 1) {
+                output.write(" ");
+            }
+        }
+    }
+
+    private static int getFileSize(Scanner input) {
+        int size = 0;
+        while(input.hasNext()){
+            input.next();
+            size++;
+        }
+        return size;
     }
 
     private static void parseArgs(String[] args) {
